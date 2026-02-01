@@ -5,6 +5,7 @@ INSTRUCTIONS TO RUN:
 2. Set environment variables:
    export BOT_TOKEN='your_telegram_bot_token'
    export DATABASE_URL='postgresql://user:password@localhost:5432/quiz_db'
+   export WEB_APP_URL='https://your-ngrok-url.ngrok-free.app'
 3. Run: python backend_app.py
 """
 
@@ -25,7 +26,7 @@ from sqlalchemy.exc import OperationalError
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton, MenuButtonWebApp
 
 # --- LOGGING SETUP ---
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +35,6 @@ logger = logging.getLogger(__name__)
 # --- DATABASE SETUP (PostgreSQL) ---
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/quiz_db")
 
-# Ba'zi cloud platformalar 'postgres://' beradi, SQLAlchemy 'postgresql://' talab qiladi
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -67,13 +67,11 @@ class DBStats(Base):
     streak = Column(Integer, default=0)
     best_streak = Column(Integer, default=0)
 
-# Jadvallarni yaratish
 try:
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables synced successfully.")
 except OperationalError as e:
-    logger.error("Could not connect to PostgreSQL. Make sure the database exists and credentials are correct.")
-    # Production-da bu yerda to'xtatish yoki local db ga o'tish mantiqi bo'lishi mumkin
+    logger.error("Could not connect to PostgreSQL. Make sure the database exists.")
 
 def get_db():
     db = SessionLocal()
@@ -184,10 +182,20 @@ dp = Dispatcher()
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
+    # 1. Inline tugma (xabar ichidagi)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚀 Ilovani ochish", web_app=WebAppInfo(url=WEB_APP_URL))]
     ])
     
+    # 2. Pastki chap burchakdagi "Menyu" tugmasini ham Web App qilish
+    try:
+        await bot.set_chat_menu_button(
+            chat_id=message.chat.id,
+            menu_button=MenuButtonWebApp(text="Quiz App", web_app=WebAppInfo(url=WEB_APP_URL))
+        )
+    except Exception as e:
+        logger.error(f"Menu button set error: {e}")
+
     await message.answer(
         "Xush kelibsiz! **ProSkill English Quiz** botiga a'zo bo'ldingiz. 📚\n\n"
         "O'zingiz so'z qo'shing va o'sha so'zlar bo'yicha test ishlang.\n"
@@ -198,6 +206,9 @@ async def cmd_start(message: types.Message):
 
 async def main_bot():
     logger.info("Bot polling starting...")
+    # Ilovani birinchi marta ishga tushirganda barcha foydalanuvchilar uchun 
+    # umumiy menyu tugmasini ham sozlab qo'yish mumkin:
+    # await bot.set_my_description("Vocabulary builder mini app bot")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
